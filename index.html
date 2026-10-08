@@ -33,7 +33,7 @@ h2{margin:0 0 12px;font-size:18px}
 button{flex:1;min-height:52px;padding:12px;border:none;border-radius:12px;font-size:16px;font-weight:bold;cursor:pointer}
 button:active{transform:scale(.97);opacity:.85}
 .btn-iniciar{background:#36e06f;color:#06110a}.btn-detener{background:#ef5350;color:#fff}
-.btn-sec{background:rgba(255,255,255,.1);color:#fff}.sel.activo{background:#36e06f;color:#06110a}
+.btn-sec{background:rgba(255,255,255,.1);color:#fff}.dia{padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:15px;color:#cfd8e3}.dia b{color:#36e06f;text-transform:capitalize;display:block;margin-bottom:4px}.sel.activo{background:#36e06f;color:#06110a}
 .estadisticas{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .stat{background:rgba(255,255,255,.045);border-radius:15px;padding:16px;text-align:center}
 .stat-titulo{color:#9ca8b8;font-size:13px;margin-bottom:6px}
@@ -92,6 +92,11 @@ input[type=number]{width:80px;font-size:28px;font-weight:bold;text-align:center;
       </div>
     </div>
   </div>
+  <div class="card" style="margin-top:20px">
+    <h2>📅 Historial</h2>
+    <div id="historial"></div>
+    <div class="botones"><button id="botonBorrar" class="btn-sec">🗑️ Borrar historial</button></div>
+  </div>
 </div>
 
 <script type="module">
@@ -111,7 +116,7 @@ const EJERCICIOS = {
     nombres: ["Extendido", "Subiendo", "Contraído"], vista: "Párate de frente, con hombros, codos y muñecas a la vista",
     tip: "Párate de frente a ~2 m, con los brazos completos a la vista. Cuenta el brazo que mejor se vea." }
 };
-let ej = EJERCICIOS.sentadilla;
+let ej = EJERCICIOS.sentadilla, claveEj = "sentadilla";
 const VISIBILIDAD_MIN = 0.5;
 const SUAVIZADO = 0.4;       // 0-1: más alto = reacciona más rápido, más bajo = más estable
 const INTERVALO_MS = 40;
@@ -119,6 +124,46 @@ const MODELO = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/
 const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
 
 const $ = id => document.getElementById(id);
+
+// ===== HISTORIAL =====
+const CLAVE = "fitai_historial";
+const NOMBRES = { sentadilla: "Sentadillas", flexion: "Flexiones", curl: "Curl de bíceps" };
+
+function cargarHistorial() {
+  try { return JSON.parse(localStorage.getItem(CLAVE)) || []; }
+  catch (e) { return []; }
+}
+
+function guardarSerie(ejercicio, reps) {
+  try {
+    const historial = cargarHistorial();
+    historial.push({ fecha: new Date().toISOString(), ejercicio, reps });
+    localStorage.setItem(CLAVE, JSON.stringify(historial));
+  } catch (e) { console.error("No se pudo guardar:", e); }
+}
+
+function mostrarHistorial() {
+  const h = cargarHistorial();
+  if (!h.length) { $("historial").innerHTML = '<p style="color:#9ca8b8">Aún no hay series guardadas.</p>'; return; }
+  const dias = {};   // { "mié, 8 oct": { sentadilla: { series, reps } } }
+  for (const r of h) {
+    const d = new Date(r.fecha).toLocaleDateString("es-CO", { weekday: "short", day: "numeric", month: "short" });
+    dias[d] = dias[d] || {};
+    const e = dias[d][r.ejercicio] = dias[d][r.ejercicio] || { series: 0, reps: 0 };
+    e.series++; e.reps += r.reps;
+  }
+  $("historial").innerHTML = Object.entries(dias).reverse().slice(0, 7).map(([d, ejs]) =>
+    '<div class="dia"><b>' + d + "</b>" +
+    Object.entries(ejs).map(([k, e]) => "<div>" + (NOMBRES[k] || "Otro") + ": " + e.series + " serie(s) · " + e.reps + " reps</div>").join("") +
+    "</div>").join("");
+}
+
+function borrarHistorial() {
+  if (confirm("¿Borrar todo el historial? No se puede deshacer.")) {
+    try { localStorage.removeItem(CLAVE); } catch (e) {}
+    mostrarHistorial();
+  }
+}
 const video = $("video"), lienzo = $("lienzo"), ctx = lienzo.getContext("2d");
 let landmarker, stream, audioCtx, wakeLock = null, timer = null;
 let corriendo = false, camara = "user";
@@ -259,6 +304,7 @@ function contarRep() {
   avisar(reps >= meta ? "Serie completada" : String(reps), reps >= meta);
   if (reps >= meta) {
     msg("🏆 Serie " + series + " completada (" + reps + " reps). ¡Descansa!");
+    guardarSerie(claveEj, reps); mostrarHistorial();
     series++; reps = 0; $("series").innerText = series;
     setTimeout(() => $("repeticiones").innerText = 0, 1500);
   } else msg("✅ Repetición " + reps + " de " + meta);
@@ -300,6 +346,7 @@ function reiniciar() {
 }
 
 function elegir(k) {
+  claveEj = k;
   ej = EJERCICIOS[k];
   document.querySelectorAll(".sel").forEach(x => x.classList.toggle("activo", x.dataset.ej === k));
   $("titulo").innerText = "Entrenador de " + ej.titulo;
@@ -309,7 +356,9 @@ document.querySelectorAll(".sel").forEach(b => b.onclick = () => elegir(b.datase
 $("botonIniciar").onclick = () => corriendo ? detener() : iniciar();
 $("botonCamara").onclick = cambiarCamara;
 $("botonReiniciar").onclick = reiniciar;
+$("botonBorrar").onclick = borrarHistorial;
 elegir("sentadilla");
+mostrarHistorial();
 </script>
 </body>
 </html>
