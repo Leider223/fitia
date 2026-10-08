@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#07111f">
-<title>FitAI Pose - Entrenador Inteligente</title>
+<title>FitIA - Entrenador Inteligente</title>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#fff;min-height:100vh;min-height:100dvh;
@@ -48,7 +48,7 @@ input[type=number]{width:80px;font-size:28px;font-weight:bold;text-align:center;
 </head>
 <body>
 <header>
-  <div class="logo">Fit<span>AI</span> Pose</div>
+  <div class="logo">Fit<span>IA</span></div>
   <div class="estado-ia off" id="pill"><div class="punto"></div><span id="pillTxt">EN PAUSA</span></div>
 </header>
 <div class="contenedor">
@@ -208,7 +208,7 @@ async function iniciar() {
   if (!navigator.mediaDevices) { msg("La cámara requiere HTTPS. Abre el enlace https:// de tu página."); return; }
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    msg("Cargando modelo de pose (la primera vez tarda unos segundos)...");
+    msg("Cargando el modelo de detección (la primera vez tarda unos segundos)...");
     await cargarModelo();
     await abrirCamara();
   } catch (e) {
