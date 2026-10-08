@@ -33,7 +33,7 @@ h2{margin:0 0 12px;font-size:18px}
 button{flex:1;min-height:52px;padding:12px;border:none;border-radius:12px;font-size:16px;font-weight:bold;cursor:pointer}
 button:active{transform:scale(.97);opacity:.85}
 .btn-iniciar{background:#36e06f;color:#06110a}.btn-detener{background:#ef5350;color:#fff}
-.btn-sec{background:rgba(255,255,255,.1);color:#fff}
+.btn-sec{background:rgba(255,255,255,.1);color:#fff}.sel.activo{background:#36e06f;color:#06110a}
 .estadisticas{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .stat{background:rgba(255,255,255,.045);border-radius:15px;padding:16px;text-align:center}
 .stat-titulo{color:#9ca8b8;font-size:13px;margin-bottom:6px}
@@ -52,8 +52,13 @@ input[type=number]{width:80px;font-size:28px;font-weight:bold;text-align:center;
   <div class="estado-ia off" id="pill"><div class="punto"></div><span id="pillTxt">EN PAUSA</span></div>
 </header>
 <div class="contenedor">
-  <h1>Entrenador de Sentadillas</h1>
-  <p class="sub">Detecta tu cuerpo y mide el ángulo de la rodilla</p>
+  <h1 id="titulo">Entrenador de Sentadillas</h1>
+  <p class="sub">Detecta tu cuerpo y mide el ángulo de tus articulaciones</p>
+  <div class="botones" style="margin:0 0 16px">
+    <button class="btn-sec sel" data-ej="sentadilla">🦵 Sentadilla</button>
+    <button class="btn-sec sel" data-ej="flexion">💪 Flexiones</button>
+    <button class="btn-sec sel" data-ej="curl">🏋️ Curl bíceps</button>
+  </div>
   <div class="grid">
     <div class="card">
       <h2>📷 Cámara</h2>
@@ -93,9 +98,20 @@ input[type=number]{width:80px;font-size:28px;font-weight:bold;text-align:center;
 import { PoseLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 
 // ===== CONFIGURACIÓN (ajústala a tu gusto) =====
-const ANGULO_ARRIBA = 160;   // rodilla casi extendida = de pie
-const ANGULO_ABAJO = 105;    // por debajo de esto cuenta como sentadilla válida (90° = paralelo)
-const ANGULO_PARCIAL = 135;  // si bajaste de aquí pero no llegaste a ABAJO, avisa "baja más"
+// Todos los ejercicios siguen el mismo patrón: ángulo extendido -> flexionado -> extendido
+// ext = ángulo para considerar "extendido", flex = ángulo que debes alcanzar, parcial = aviso de "llega más lejos"
+const EJERCICIOS = {
+  sentadilla: { titulo: "Sentadillas", art: "rodilla", lados: [[23,25,27],[24,26,28]], ext: 160, flex: 105, parcial: 135,
+    nombres: ["De pie", "Bajando", "Abajo"], vista: "Aléjate para que se vean cadera, rodillas y pies",
+    tip: "Apoya el teléfono a ~2 m, de frente o de lado, con el cuerpo completo en cuadro." },
+  flexion: { titulo: "Flexiones", art: "codo", lados: [[11,13,15],[12,14,16]], ext: 155, flex: 95, parcial: 125,
+    nombres: ["Arriba", "Bajando", "Abajo"], vista: "Ponte de lado a la cámara, con hombro, codo y muñeca a la vista",
+    tip: "Pon el teléfono en el suelo, de lado, a ~1,5 m, con el cuerpo completo en cuadro." },
+  curl: { titulo: "Curl de bíceps", art: "codo", lados: [[11,13,15],[12,14,16]], ext: 150, flex: 55, parcial: 100,
+    nombres: ["Extendido", "Subiendo", "Contraído"], vista: "Párate de frente, con hombros, codos y muñecas a la vista",
+    tip: "Párate de frente a ~2 m, con los brazos completos a la vista. Cuenta el brazo que mejor se vea." }
+};
+let ej = EJERCICIOS.sentadilla;
 const VISIBILIDAD_MIN = 0.5;
 const SUAVIZADO = 0.4;       // 0-1: más alto = reacciona más rápido, más bajo = más estable
 const INTERVALO_MS = 40;
@@ -107,7 +123,7 @@ const video = $("video"), lienzo = $("lienzo"), ctx = lienzo.getContext("2d");
 let landmarker, stream, audioCtx, wakeLock = null, timer = null;
 let corriendo = false, camara = "user";
 let reps = 0, series = 1, segundos = 0;
-let fase = "arriba", minAngulo = 180, suave = null, ultimo = 0, ultimoVideoT = -1;
+let fase = "extendido", minAngulo = 180, suave = null, ultimo = 0, ultimoVideoT = -1;
 
 const msg = t => $("mensaje").innerText = t;
 function setPill(on) { $("pill").className = "estado-ia" + (on ? "" : " off"); $("pillTxt").innerText = on ? "IA ACTIVA" : "EN PAUSA"; }
@@ -193,38 +209,33 @@ function angulo(a, b, c) {  // ángulo en b, en píxeles reales (evita deformar 
 
 function procesar(lm) {
   ctx.clearRect(0, 0, lienzo.width, lienzo.height);
-  if (!lm) { $("estado").innerText = "No te veo"; $("angulo").innerText = "Ángulo de rodilla: --"; return; }
+  if (!lm) { $("estado").innerText = "No te veo"; $("angulo").innerText = "Ángulo de " + ej.art + ": --"; return; }
 
-  // Elige el lado de la pierna mejor visible (cadera, rodilla, tobillo)
-  const lados = [[23, 25, 27], [24, 26, 28]].map(ids => ({
-    ids, vis: Math.min(...ids.map(i => lm[i].visibility ?? 0))
-  }));
+  // Elige el lado (izquierdo o derecho) mejor visible
+  const lados = ej.lados.map(ids => ({ ids, vis: Math.min(...ids.map(i => lm[i].visibility ?? 0)) }));
   const lado = lados[0].vis >= lados[1].vis ? lados[0] : lados[1];
-  dibujar(lm, lado.vis >= VISIBILIDAD_MIN);
+  const ok = lado.vis >= VISIBILIDAD_MIN;
+  dibujar(lm, ok);
+  if (!ok) { $("estado").innerText = "Cuerpo incompleto"; $("angulo").innerText = ej.vista; return; }
 
-  if (lado.vis < VISIBILIDAD_MIN) {
-    $("estado").innerText = "Cuerpo incompleto";
-    $("angulo").innerText = "Aléjate para que se vean cadera, rodillas y pies";
-    return;
-  }
-
-  const [h, k, t] = lado.ids.map(i => lm[i]);
-  const crudo = angulo(h, k, t);
+  const [a, b, c] = lado.ids.map(i => lm[i]);
+  const crudo = angulo(a, b, c);
   suave = suave === null ? crudo : suave + SUAVIZADO * (crudo - suave);
-  $("angulo").innerText = "Ángulo de rodilla: " + Math.round(suave) + "°";
+  $("angulo").innerText = "Ángulo de " + ej.art + ": " + Math.round(suave) + "°";
 
-  // Máquina de estados: arriba -> abajo -> arriba = 1 repetición
-  if (fase === "arriba") {
-    if (suave < ANGULO_ARRIBA - 5) minAngulo = Math.min(minAngulo, suave);
-    if (suave < ANGULO_ABAJO) { fase = "abajo"; }
-    else if (suave > ANGULO_ARRIBA && minAngulo < ANGULO_PARCIAL) {
-      msg("⚠️ Baja más: llegaste a " + Math.round(minAngulo) + "° (meta: menos de " + ANGULO_ABAJO + "°)");
+  // extendido -> flexionado -> extendido = 1 repetición
+  const [nExt, nMed, nFlex] = ej.nombres;
+  if (fase === "extendido") {
+    if (suave < ej.ext - 5) minAngulo = Math.min(minAngulo, suave);
+    if (suave < ej.flex) fase = "flexionado";
+    else if (suave > ej.ext) {
+      if (minAngulo < ej.parcial) msg("⚠️ Llega más lejos: " + Math.round(minAngulo) + "° (meta: menos de " + ej.flex + "°)");
       minAngulo = 180;
-    } else if (suave > ANGULO_ARRIBA) minAngulo = 180;
-    $("estado").innerText = suave > ANGULO_ARRIBA ? "De pie" : "Bajando";
+    }
+    $("estado").innerText = suave > ej.ext ? nExt : nMed;
   } else {
-    $("estado").innerText = "Abajo ✔";
-    if (suave > ANGULO_ARRIBA) { fase = "arriba"; minAngulo = 180; contarRep(); }
+    $("estado").innerText = nFlex + " ✔";
+    if (suave > ej.ext) { fase = "extendido"; minAngulo = 180; contarRep(); }
   }
 }
 
@@ -232,10 +243,10 @@ function dibujar(lm, ok) {
   const W = lienzo.width, H = lienzo.height;
   ctx.lineWidth = Math.max(3, W / 120);
   ctx.strokeStyle = ok ? "#36e06f" : "#ef5350"; ctx.fillStyle = "#fff";
-  [[11, 12], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]].forEach(([a, b]) => {
+  [[11,12],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[11,13],[13,15],[12,14],[14,16]].forEach(([a, b]) => {
     ctx.beginPath(); ctx.moveTo(lm[a].x * W, lm[a].y * H); ctx.lineTo(lm[b].x * W, lm[b].y * H); ctx.stroke();
   });
-  [11, 12, 23, 24, 25, 26, 27, 28].forEach(i => {
+  [11,12,13,14,15,16,23,24,25,26,27,28].forEach(i => {
     ctx.beginPath(); ctx.arc(lm[i].x * W, lm[i].y * H, ctx.lineWidth * 1.3, 0, 7); ctx.fill();
   });
 }
@@ -282,15 +293,23 @@ async function pedirPantallaActiva() { try { if ("wakeLock" in navigator) wakeLo
 document.addEventListener("visibilitychange", () => { if (corriendo && document.visibilityState === "visible") pedirPantallaActiva(); });
 
 function reiniciar() {
-  reps = 0; series = 1; segundos = 0; fase = "arriba"; minAngulo = 180; suave = null;
+  reps = 0; series = 1; segundos = 0; fase = "extendido"; minAngulo = 180; suave = null;
   $("repeticiones").innerText = "0"; $("series").innerText = "1"; $("tiempo").innerText = "00:00";
-  $("estado").innerText = "Esperando..."; $("angulo").innerText = "Ángulo de rodilla: --";
+  $("estado").innerText = "Esperando..."; $("angulo").innerText = "Ángulo de " + ej.art + ": --";
   msg("Contador reiniciado 🔄");
 }
 
+function elegir(k) {
+  ej = EJERCICIOS[k];
+  document.querySelectorAll(".sel").forEach(x => x.classList.toggle("activo", x.dataset.ej === k));
+  $("titulo").innerText = "Entrenador de " + ej.titulo;
+  reiniciar(); msg(ej.tip);
+}
+document.querySelectorAll(".sel").forEach(b => b.onclick = () => elegir(b.dataset.ej));
 $("botonIniciar").onclick = () => corriendo ? detener() : iniciar();
 $("botonCamara").onclick = cambiarCamara;
 $("botonReiniciar").onclick = reiniciar;
+elegir("sentadilla");
 </script>
 </body>
 </html>
