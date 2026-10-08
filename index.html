@@ -33,7 +33,7 @@ h2{margin:0 0 12px;font-size:18px}
 button{flex:1;min-height:52px;padding:12px;border:none;border-radius:12px;font-size:16px;font-weight:bold;cursor:pointer}
 button:active{transform:scale(.97);opacity:.85}
 .btn-iniciar{background:#36e06f;color:#06110a}.btn-detener{background:#ef5350;color:#fff}
-.btn-sec{background:rgba(255,255,255,.1);color:#fff}.dia{padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:15px;color:#cfd8e3}.dia b{color:#36e06f;text-transform:capitalize;display:block;margin-bottom:4px}.sel.activo{background:#36e06f;color:#06110a}
+.btn-sec{background:rgba(255,255,255,.1);color:#fff}.dia{padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:15px;color:#cfd8e3}.dia b{color:#36e06f;text-transform:capitalize;display:block;margin-bottom:4px}.opciones #descanso{width:70px;height:auto;font-size:16px;padding:4px}.sel.activo{background:#36e06f;color:#06110a}
 .estadisticas{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .stat{background:rgba(255,255,255,.045);border-radius:15px;padding:16px;text-align:center}
 .stat-titulo{color:#9ca8b8;font-size:13px;margin-bottom:6px}
@@ -71,6 +71,11 @@ input[type=number]{width:80px;font-size:28px;font-weight:bold;text-align:center;
         <div id="estado">Esperando...</div>
         <div id="angulo">Ángulo de rodilla: --</div>
       </div>
+      <div id="descansoBox" class="estado" style="display:none">
+        <div style="color:#9ca8b8;font-size:14px">😮‍💨 Descanso</div>
+        <div id="descansoSeg" style="font-size:48px;font-weight:bold;color:#36e06f">60</div>
+        <button id="botonSaltar" class="btn-sec" style="margin-top:8px;width:100%">⏭️ Saltar descanso</button>
+      </div>
       <div id="mensaje">Apoya el teléfono a ~2 m, de lado o de frente, con el cuerpo completo en cuadro.</div>
       <div class="botones">
         <button id="botonIniciar" class="btn-iniciar">▶️ Iniciar</button>
@@ -89,6 +94,7 @@ input[type=number]{width:80px;font-size:28px;font-weight:bold;text-align:center;
       <div class="opciones">
         <label><input type="checkbox" id="voz" checked> Decir el número en voz alta</label>
         <label><input type="checkbox" id="sonido" checked> Sonido y vibración</label>
+        <label>Descanso entre series (seg): <input type="number" id="descanso" value="60" min="5" max="600" inputmode="numeric"></label>
       </div>
     </div>
   </div>
@@ -254,6 +260,7 @@ function angulo(a, b, c) {  // ángulo en b, en píxeles reales (evita deformar 
 
 function procesar(lm) {
   ctx.clearRect(0, 0, lienzo.width, lienzo.height);
+  if (descansando) { if (lm) dibujar(lm, true); $("estado").innerText = "Descansando"; return; }
   if (!lm) { $("estado").innerText = "No te veo"; $("angulo").innerText = "Ángulo de " + ej.art + ": --"; return; }
 
   // Elige el lado (izquierdo o derecho) mejor visible
@@ -296,6 +303,30 @@ function dibujar(lm, ok) {
   });
 }
 
+// ===== DESCANSO ENTRE SERIES =====
+let descansando = false, descansoTimer = null;
+
+function iniciarDescanso() {
+  let resto = Math.max(5, parseInt($("descanso").value) || 60);
+  descansando = true;
+  clearInterval(descansoTimer);
+  $("descansoBox").style.display = "block";
+  $("descansoSeg").innerText = resto;
+  descansoTimer = setInterval(() => {
+    resto--;
+    $("descansoSeg").innerText = resto;
+    if (resto > 0 && resto <= 3) avisar(String(resto), false);   // cuenta final: 3, 2, 1
+    if (resto <= 0) terminarDescanso(true);
+  }, 1000);
+}
+
+function terminarDescanso(conAviso) {
+  clearInterval(descansoTimer); descansoTimer = null;
+  descansando = false;
+  $("descansoBox").style.display = "none";
+  if (conAviso) { avisar("A la siguiente serie", true); msg("💪 ¡Descanso terminado! A la siguiente serie."); }
+}
+
 // ===== CONTEO Y AVISOS =====
 function contarRep() {
   reps++;
@@ -305,6 +336,7 @@ function contarRep() {
   if (reps >= meta) {
     msg("🏆 Serie " + series + " completada (" + reps + " reps). ¡Descansa!");
     guardarSerie(claveEj, reps); mostrarHistorial();
+    iniciarDescanso();
     series++; reps = 0; $("series").innerText = series;
     setTimeout(() => $("repeticiones").innerText = 0, 1500);
   } else msg("✅ Repetición " + reps + " de " + meta);
@@ -339,6 +371,7 @@ async function pedirPantallaActiva() { try { if ("wakeLock" in navigator) wakeLo
 document.addEventListener("visibilitychange", () => { if (corriendo && document.visibilityState === "visible") pedirPantallaActiva(); });
 
 function reiniciar() {
+  terminarDescanso(false);
   reps = 0; series = 1; segundos = 0; fase = "extendido"; minAngulo = 180; suave = null;
   $("repeticiones").innerText = "0"; $("series").innerText = "1"; $("tiempo").innerText = "00:00";
   $("estado").innerText = "Esperando..."; $("angulo").innerText = "Ángulo de " + ej.art + ": --";
@@ -357,6 +390,7 @@ $("botonIniciar").onclick = () => corriendo ? detener() : iniciar();
 $("botonCamara").onclick = cambiarCamara;
 $("botonReiniciar").onclick = reiniciar;
 $("botonBorrar").onclick = borrarHistorial;
+$("botonSaltar").onclick = () => { terminarDescanso(false); msg("Descanso omitido."); };
 elegir("sentadilla");
 mostrarHistorial();
 </script>
