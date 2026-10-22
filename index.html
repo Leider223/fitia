@@ -99,6 +99,10 @@ input[type=number]{width:80px;font-size:28px;font-weight:bold;text-align:center;
     </div>
   </div>
   <div class="card" style="margin-top:20px">
+    <h2>🤖 Entrenador IA</h2>
+    <div id="entrenador" style="color:#cfd8e3;font-size:16px;line-height:1.5">Termina una serie y tu entrenador te dará su opinión.</div>
+  </div>
+  <div class="card" style="margin-top:20px">
     <h2>📅 Historial</h2>
     <div id="historial"></div>
     <div class="botones"><button id="botonBorrar" class="btn-sec">🗑️ Borrar historial</button></div>
@@ -327,6 +331,30 @@ function terminarDescanso(conAviso) {
   if (conAviso) { avisar("A la siguiente serie", true); msg("💪 ¡Descanso terminado! A la siguiente serie."); }
 }
 
+// ===== ENTRENADOR IA =====
+const URL_ENTRENADOR = "http://localhost:3000/api/feedback";
+
+async function entrenadorIA(ejercicio, repeticiones) {
+  const caja = $("entrenador");
+  caja.innerText = "🤖 Pensando...";
+  try {
+    // historial anterior (sin la serie que acaba de terminar), con nombres legibles
+    const historial = cargarHistorial().slice(0, -1)
+      .map(h => ({ ...h, ejercicio: NOMBRES[h.ejercicio] || h.ejercicio }));
+    const res = await fetch(URL_ENTRENADOR, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ejercicio: NOMBRES[ejercicio] || ejercicio, repeticiones, historial })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Error del servidor");
+    caja.innerText = "🤖 " + data.mensaje;
+  } catch (e) {
+    console.error(e);
+    caja.innerText = "🤖 No pude conectar con el entrenador. ¿Está encendido el servidor (npm start)?";
+  }
+}
+
 // ===== CONTEO Y AVISOS =====
 function contarRep() {
   reps++;
@@ -336,6 +364,7 @@ function contarRep() {
   if (reps >= meta) {
     msg("🏆 Serie " + series + " completada (" + reps + " reps). ¡Descansa!");
     guardarSerie(claveEj, reps); mostrarHistorial();
+    entrenadorIA(claveEj, reps);
     iniciarDescanso();
     series++; reps = 0; $("series").innerText = series;
     setTimeout(() => $("repeticiones").innerText = 0, 1500);
