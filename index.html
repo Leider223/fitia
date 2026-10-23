@@ -102,9 +102,9 @@ input[type=number]{width:80px;font-size:28px;font-weight:bold;text-align:center;
     <h2>🤖 Entrenador IA</h2>
     <div id="entrenador" style="color:#cfd8e3;font-size:16px;line-height:1.5">Termina una serie y tu entrenador te dará su opinión.</div>
     <div style="margin-top:14px;color:#9ca8b8;font-size:13px">
-      Dirección del servidor (si lo usas desde el teléfono, pega aquí la dirección https del túnel):
+      Dirección del servidor del entrenador (déjala vacía para usar la predeterminada):
       <input id="urlServidor" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"
-        placeholder="https://xxxx.trycloudflare.com"
+        placeholder="https://fitia-backend-15yp.onrender.com"
         style="width:100%;margin-top:6px;padding:10px;font-size:14px;color:#fff;background:transparent;border:1px solid rgba(255,255,255,.2);border-radius:10px">
     </div>
   </div>
@@ -338,12 +338,13 @@ function terminarDescanso(conAviso) {
 }
 
 // ===== ENTRENADOR IA =====
+const URL_POR_DEFECTO = "https://fitia-backend-15yp.onrender.com";
 const CLAVE_URL = "fitai_url_entrenador";
 function urlEntrenador() {
   let u = "";
   try { u = localStorage.getItem(CLAVE_URL) || ""; } catch (e) {}
   u = u.trim().replace(/\/+$/, "");
-  return (u || "http://localhost:3000") + "/api/feedback";
+  return (u || URL_POR_DEFECTO) + "/api/feedback";
 }
 
 async function entrenadorIA(ejercicio, repeticiones) {
@@ -363,7 +364,7 @@ async function entrenadorIA(ejercicio, repeticiones) {
     caja.innerText = "🤖 " + data.mensaje;
   } catch (e) {
     console.error(e);
-    caja.innerText = "🤖 No pude conectar con el entrenador. ¿Está encendido el servidor (npm start)?";
+    caja.innerText = "🤖 No pude conectar con el entrenador. Si estaba dormido, espera un minuto e inténtalo con otra serie.";
   }
 }
 
