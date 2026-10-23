@@ -101,6 +101,12 @@ input[type=number]{width:80px;font-size:28px;font-weight:bold;text-align:center;
   <div class="card" style="margin-top:20px">
     <h2>🤖 Entrenador IA</h2>
     <div id="entrenador" style="color:#cfd8e3;font-size:16px;line-height:1.5">Termina una serie y tu entrenador te dará su opinión.</div>
+    <div style="margin-top:14px;color:#9ca8b8;font-size:13px">
+      Dirección del servidor (si lo usas desde el teléfono, pega aquí la dirección https del túnel):
+      <input id="urlServidor" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"
+        placeholder="https://xxxx.trycloudflare.com"
+        style="width:100%;margin-top:6px;padding:10px;font-size:14px;color:#fff;background:transparent;border:1px solid rgba(255,255,255,.2);border-radius:10px">
+    </div>
   </div>
   <div class="card" style="margin-top:20px">
     <h2>📅 Historial</h2>
@@ -332,7 +338,13 @@ function terminarDescanso(conAviso) {
 }
 
 // ===== ENTRENADOR IA =====
-const URL_ENTRENADOR = "http://localhost:3000/api/feedback";
+const CLAVE_URL = "fitai_url_entrenador";
+function urlEntrenador() {
+  let u = "";
+  try { u = localStorage.getItem(CLAVE_URL) || ""; } catch (e) {}
+  u = u.trim().replace(/\/+$/, "");
+  return (u || "http://localhost:3000") + "/api/feedback";
+}
 
 async function entrenadorIA(ejercicio, repeticiones) {
   const caja = $("entrenador");
@@ -341,7 +353,7 @@ async function entrenadorIA(ejercicio, repeticiones) {
     // historial anterior (sin la serie que acaba de terminar), con nombres legibles
     const historial = cargarHistorial().slice(0, -1)
       .map(h => ({ ...h, ejercicio: NOMBRES[h.ejercicio] || h.ejercicio }));
-    const res = await fetch(URL_ENTRENADOR, {
+    const res = await fetch(urlEntrenador(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ejercicio: NOMBRES[ejercicio] || ejercicio, repeticiones, historial })
@@ -420,6 +432,11 @@ $("botonCamara").onclick = cambiarCamara;
 $("botonReiniciar").onclick = reiniciar;
 $("botonBorrar").onclick = borrarHistorial;
 $("botonSaltar").onclick = () => { terminarDescanso(false); msg("Descanso omitido."); };
+try { $("urlServidor").value = localStorage.getItem(CLAVE_URL) || ""; } catch (e) {}
+$("urlServidor").onchange = () => {
+  try { localStorage.setItem(CLAVE_URL, $("urlServidor").value.trim()); } catch (e) {}
+  $("entrenador").innerText = "Dirección guardada. Termina una serie para probar el entrenador.";
+};
 elegir("sentadilla");
 mostrarHistorial();
 </script>
