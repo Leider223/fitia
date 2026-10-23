@@ -94,6 +94,7 @@ input[type=number]{width:80px;font-size:28px;font-weight:bold;text-align:center;
       <div class="opciones">
         <label><input type="checkbox" id="voz" checked> Decir el número en voz alta</label>
         <label><input type="checkbox" id="sonido" checked> Sonido y vibración</label>
+        <label><input type="checkbox" id="vozEntrenador" checked> El entrenador lee su mensaje en voz alta</label>
         <label>Descanso entre series (seg): <input type="number" id="descanso" value="60" min="5" max="600" inputmode="numeric"></label>
       </div>
     </div>
@@ -101,6 +102,7 @@ input[type=number]{width:80px;font-size:28px;font-weight:bold;text-align:center;
   <div class="card" style="margin-top:20px">
     <h2>🤖 Entrenador IA</h2>
     <div id="entrenador" style="color:#cfd8e3;font-size:16px;line-height:1.5">Termina una serie y tu entrenador te dará su opinión.</div>
+    <button id="botonEscuchar" class="btn-sec" style="margin-top:12px;width:100%;min-height:44px">🔊 Escuchar de nuevo</button>
     <div style="margin-top:14px;color:#9ca8b8;font-size:13px">
       Dirección del servidor del entrenador (déjala vacía para usar la predeterminada):
       <input id="urlServidor" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"
@@ -347,6 +349,28 @@ function urlEntrenador() {
   return (u || URL_POR_DEFECTO) + "/api/feedback";
 }
 
+let ultimoMensajeIA = "";
+
+function hablar(texto) {
+  if (!("speechSynthesis" in window)) return;
+  // quita emojis para que la voz no los lea ("cohete", "músculo"...)
+  const limpio = texto.replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, "").replace(/\s+/g, " ").trim();
+  if (!limpio) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(limpio);
+  // prefiere una voz en español latino; si no hay, cualquier voz en español
+  const voces = speechSynthesis.getVoices();
+  let voz = null;
+  for (const l of ["es-co", "es-mx", "es-us", "es-419", "es-es"]) {
+    voz = voces.find(v => v.lang.replace("_", "-").toLowerCase() === l);
+    if (voz) break;
+  }
+  if (!voz) voz = voces.find(v => v.lang.toLowerCase().startsWith("es"));
+  if (voz) { u.voice = voz; u.lang = voz.lang; } else { u.lang = "es-ES"; }
+  u.rate = 1;
+  speechSynthesis.speak(u);
+}
+
 async function entrenadorIA(ejercicio, repeticiones) {
   const caja = $("entrenador");
   caja.innerText = "🤖 Pensando...";
@@ -362,6 +386,8 @@ async function entrenadorIA(ejercicio, repeticiones) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Error del servidor");
     caja.innerText = "🤖 " + data.mensaje;
+    ultimoMensajeIA = data.mensaje;
+    if ($("vozEntrenador").checked) hablar(data.mensaje);
   } catch (e) {
     console.error(e);
     caja.innerText = "🤖 No pude conectar con el entrenador. Si estaba dormido, espera un minuto e inténtalo con otra serie.";
@@ -432,6 +458,10 @@ $("botonIniciar").onclick = () => corriendo ? detener() : iniciar();
 $("botonCamara").onclick = cambiarCamara;
 $("botonReiniciar").onclick = reiniciar;
 $("botonBorrar").onclick = borrarHistorial;
+$("botonEscuchar").onclick = () => {
+  if (ultimoMensajeIA) hablar(ultimoMensajeIA);
+  else $("entrenador").innerText = "Aún no hay mensaje. Termina una serie primero.";
+};
 $("botonSaltar").onclick = () => { terminarDescanso(false); msg("Descanso omitido."); };
 try { $("urlServidor").value = localStorage.getItem(CLAVE_URL) || ""; } catch (e) {}
 $("urlServidor").onchange = () => {
