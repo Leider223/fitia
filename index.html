@@ -58,6 +58,8 @@ input[type=number]{width:80px;font-size:28px;font-weight:bold;text-align:center;
     <button class="btn-sec sel" data-ej="sentadilla">🦵 Sentadilla</button>
     <button class="btn-sec sel" data-ej="flexion">💪 Flexiones</button>
     <button class="btn-sec sel" data-ej="curl">🏋️ Curl bíceps</button>
+    <button class="btn-sec sel" data-ej="zancada">🚶 Zancadas</button>
+    <button class="btn-sec sel" data-ej="pesomuerto">⚖️ Peso muerto</button>
   </div>
   <div class="grid">
     <div class="card">
@@ -103,6 +105,13 @@ input[type=number]{width:80px;font-size:28px;font-weight:bold;text-align:center;
     <h2>🤖 Entrenador IA</h2>
     <div id="entrenador" style="color:#cfd8e3;font-size:16px;line-height:1.5">Termina una serie y tu entrenador te dará su opinión.</div>
     <button id="botonEscuchar" class="btn-sec" style="margin-top:12px;width:100%;min-height:44px">🔊 Escuchar de nuevo</button>
+    <h2 style="margin-top:20px">💬 Pregúntale a tu entrenador</h2>
+    <div id="chatLista" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:8px"></div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <input id="chatTexto" type="text" maxlength="300" autocomplete="off" placeholder="Ej: ¿qué rutina me recomiendas?"
+        style="flex:1;min-width:0;padding:12px;font-size:16px;color:#fff;background:transparent;border:1px solid rgba(255,255,255,.2);border-radius:10px">
+      <button id="chatEnviar" class="btn-iniciar" style="flex:0 0 auto;min-height:48px;padding:0 18px">Enviar</button>
+    </div>
     <div style="margin-top:14px;color:#9ca8b8;font-size:13px">
       Dirección del servidor del entrenador (déjala vacía para usar la predeterminada):
       <input id="urlServidor" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"
@@ -132,7 +141,13 @@ const EJERCICIOS = {
     tip: "Pon el teléfono en el suelo, de lado, a ~1,5 m, con el cuerpo completo en cuadro." },
   curl: { titulo: "Curl de bíceps", art: "codo", lados: [[11,13,15],[12,14,16]], ext: 150, flex: 55, parcial: 100,
     nombres: ["Extendido", "Subiendo", "Contraído"], vista: "Párate de frente, con hombros, codos y muñecas a la vista",
-    tip: "Párate de frente a ~2 m, con los brazos completos a la vista. Cuenta el brazo que mejor se vea." }
+    tip: "Párate de frente a ~2 m, con los brazos completos a la vista. Cuenta el brazo que mejor se vea." },
+  zancada: { titulo: "Zancadas", art: "rodilla", lados: [[23,25,27],[24,26,28]], ext: 160, flex: 105, parcial: 135,
+    nombres: ["De pie", "Bajando", "Abajo"], vista: "Ponte de lado, con cadera, rodilla y tobillo a la vista",
+    tip: "Ponte de lado a ~2 m, con el cuerpo completo en cuadro. Cuenta la pierna que quede más cerca de la cámara." },
+  pesomuerto: { titulo: "Peso muerto rumano", art: "cadera", lados: [[11,23,25],[12,24,26]], ext: 160, flex: 115, parcial: 140,
+    nombres: ["De pie", "Bajando", "Abajo"], vista: "Ponte de lado, con hombro, cadera y rodilla a la vista",
+    tip: "Ponte de lado a ~2 m, con el cuerpo completo en cuadro. Baja con la espalda recta, llevando la cadera hacia atrás." }
 };
 let ej = EJERCICIOS.sentadilla, claveEj = "sentadilla";
 const VISIBILIDAD_MIN = 0.5;
@@ -145,7 +160,7 @@ const $ = id => document.getElementById(id);
 
 // ===== HISTORIAL =====
 const CLAVE = "fitai_historial";
-const NOMBRES = { sentadilla: "Sentadillas", flexion: "Flexiones", curl: "Curl de bíceps" };
+const NOMBRES = { sentadilla: "Sentadillas", flexion: "Flexiones", curl: "Curl de bíceps", zancada: "Zancadas", pesomuerto: "Peso muerto rumano" };
 
 function cargarHistorial() {
   try { return JSON.parse(localStorage.getItem(CLAVE)) || []; }
@@ -342,12 +357,12 @@ function terminarDescanso(conAviso) {
 // ===== ENTRENADOR IA =====
 const URL_POR_DEFECTO = "https://fitia-backend-15yp.onrender.com";
 const CLAVE_URL = "fitai_url_entrenador";
-function urlEntrenador() {
+function urlBase() {
   let u = "";
   try { u = localStorage.getItem(CLAVE_URL) || ""; } catch (e) {}
-  u = u.trim().replace(/\/+$/, "");
-  return (u || URL_POR_DEFECTO) + "/api/feedback";
+  return (u.trim().replace(/\/+$/, "") || URL_POR_DEFECTO);
 }
+function urlEntrenador() { return urlBase() + "/api/feedback"; }
 
 let ultimoMensajeIA = "";
 
@@ -391,6 +406,54 @@ async function entrenadorIA(ejercicio, repeticiones) {
   } catch (e) {
     console.error(e);
     caja.innerText = "🤖 No pude conectar con el entrenador. Si estaba dormido, espera un minuto e inténtalo con otra serie.";
+  }
+}
+
+// ===== CHAT CON EL ENTRENADOR =====
+const chat = [];            // conversación: { rol: "user" | "assistant", texto }
+let chatOcupado = false;
+
+function burbuja(rol, texto) {
+  const d = document.createElement("div");
+  d.textContent = texto;     // textContent: nunca interpreta HTML
+  d.style.cssText = "max-width:85%;padding:10px 14px;border-radius:14px;font-size:15px;line-height:1.4;white-space:pre-wrap;" +
+    (rol === "user" ? "align-self:flex-end;background:rgba(54,224,111,.18)" : "align-self:flex-start;background:rgba(255,255,255,.08)");
+  $("chatLista").appendChild(d);
+  $("chatLista").scrollTop = $("chatLista").scrollHeight;
+  return d;
+}
+
+async function enviarChat() {
+  const texto = $("chatTexto").value.trim();
+  if (!texto || chatOcupado) return;
+  chatOcupado = true;
+  $("chatEnviar").disabled = true;
+  $("chatTexto").value = "";
+  burbuja("user", texto);
+  chat.push({ rol: "user", texto });
+  const espera = burbuja("assistant", "Pensando...");
+  try {
+    const historial = cargarHistorial().slice(-10)
+      .map(h => ({ fecha: h.fecha, ejercicio: NOMBRES[h.ejercicio] || h.ejercicio, reps: h.reps }));
+    const res = await fetch(urlBase() + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mensajes: chat.slice(-10), historial })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Error del servidor");
+    espera.textContent = data.mensaje;
+    chat.push({ rol: "assistant", texto: data.mensaje });
+    ultimoMensajeIA = data.mensaje;
+    if ($("vozEntrenador").checked) hablar(data.mensaje);
+  } catch (e) {
+    console.error(e);
+    espera.textContent = "No pude conectar con el entrenador. Si estaba dormido, espera un minuto e inténtalo de nuevo.";
+    chat.pop();              // quita la pregunta para no romper la conversación
+  } finally {
+    chatOcupado = false;
+    $("chatEnviar").disabled = false;
+    $("chatLista").scrollTop = $("chatLista").scrollHeight;
   }
 }
 
@@ -462,6 +525,8 @@ $("botonEscuchar").onclick = () => {
   if (ultimoMensajeIA) hablar(ultimoMensajeIA);
   else $("entrenador").innerText = "Aún no hay mensaje. Termina una serie primero.";
 };
+$("chatEnviar").onclick = enviarChat;
+$("chatTexto").addEventListener("keydown", e => { if (e.key === "Enter") enviarChat(); });
 $("botonSaltar").onclick = () => { terminarDescanso(false); msg("Descanso omitido."); };
 try { $("urlServidor").value = localStorage.getItem(CLAVE_URL) || ""; } catch (e) {}
 $("urlServidor").onchange = () => {
